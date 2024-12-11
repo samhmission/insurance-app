@@ -4,163 +4,75 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 require("dotenv").config();
 
 const app = express();
-
-// middleware
-app.use((req, res, next) => {
-  console.log(`${req.method} request received to ${req.url}`);
-  next();
-});
 app.use(cors());
 app.use(express.json());
 
-// AI configuration
-const systemInstructions = `
-  system_instruction:
-    description: |
-    Tina is an AI that helps users select the best insurance policy by asking a series of personalized questions based on user responses. 
-        The AI should always begin with an opt-in question asking if the user agrees to answer personal questions to recommend a suitable policy. 
-        If the user agrees, Tina will continue by asking relevant questions, dynamically adjusting based on the user's responses, and avoid asking for specific product preferences directly.
-    products:
-        - name: Mechanical Breakdown Insurance (MBI)
-        description: Covers vehicle repairs and breakdowns.
-        - name: Comprehensive Car Insurance
-        description: Covers both third-party liabilities and damage to the user's own vehicle.
-        - name: Third Party Car Insurance
-        description: Covers damages to third-party vehicles and property.
-    business_rules:
-        - MBI_is_not_available_for:
-            - trucks
-            - racing_cars
-        - Comprehensive_Car_Insurance_is_available_for_vehicles_under_10_years_old: true
-    guidelines:
-        opt_in_question: "I'm Tina. I help you to choose the right insurance policy. May I ask you a few personal questions to make sure I recommend the best policy for you?"
-        question_approach: |
-            - Tina will not directly ask "what insurance product do you want?"
-            - Tina will ask clarifying questions such as:
-            - "Do you need coverage for your own car or just third-party liability?"
-            - "How old is your vehicle?"
-            - "What type of vehicle do you drive (e.g., sedan, truck, sports car)?"
-        recommendations:
-            - At the end of the conversation, Tina will recommend one or more insurance policies based on user responses.
-            - Tina will provide clear reasoning for each recommendation.
-        response_adjustments:
-            - Tina will adjust questions and recommendations dynamically based on user responses.
-            - Tina will follow business rules for product eligibility.
-        tone:
-            professional: true
-            respectful: true
-            user_focused: true`;
+const genAI = new GoogleGenerativeAI(process.env.API_KEY);
+const model = genAI.getGenerativeModel({
+  model: "gemini-1.5-flash",
+  generationConfig: {
+    candidateCount: 1,
+    stopSequences: ["x"],
+    maxOutputTokens: 100,
+    temperature: 1.0,
+  },
+});
 
-// Initialize chatSession with null
-let chatSession = null;
+// Function to create prompt
+function createPrompt(userResponse, chatHistory) {
+  const fullHistory = [
+    ...(Array.isArray(chatHistory) ? chatHistory : []),
+    { role: "user", content: userResponse },
+  ];
+  const prompt = `You are Tina, an AI insurance consultant. You will ask questions to determine the best insurance policy for a customer based on their answers.
+  The conversation should follow a structured format of questions and responses, only one question should be asked at a time.
+  You have access to three car insurance products:
 
-// initial prompt
+  * **Mechanical Breakdown Insurance (MBI):** Covers mechanical failures. Not available for trucks or racing cars.
+  * **Comprehensive Car Insurance:** Covers a wider range of events including accidents and theft. Only available for vehicles less than 10 years old.
+  * **Third Party Car Insurance:** Covers damage caused to other people's property or injuries to other people.
 
-// Function to initialize generative AI model
-async function initializeGenerativeAI() {
-  try {
-    if (!process.env.API_KEY) {
-      throw new Error("API key is missing in environment variables.");
-    }
+  Conversation History:
+  ${fullHistory.map((item) => `${item.role}: ${item.content}`).join("\n")}
 
-    const genAI = new GoogleGenerativeAI(process.env.API_KEY);
-    const model = await genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
-      systemInstruction: systemInstructions,
-      generationConfig: {
-        candidateCount: 1,
-        stopSequences: ["x"],
-        maxOutputTokens: 1000,
-        temperature: 1.0,
-      },
-    });
-    const chat = model.startChat({
-      history: [
-        {
-          role: "user",
-          parts: [
-            {
-              text: "I'm Tina. I help you to choose the right insurance policy. May I ask you a few personal questions to make sure I recommend the best policy for you?",
-            },
-          ],
-        },
-      ],
-    });
-    console.log("✅ AI model initialized");
-    let result = await chat.sendMessage("I agree");
-    console.log(result);
-    return model;
-  } catch (error) {
-    console.error("❌ Error initializing AI model:", error);
-    throw new Error("Error initializing AI model");
-  }
+  Based on the conversation history, respond appropriately. If this is the first interaction, ask if the user wants help choosing an insurance policy, then proceed to gather information and give a recommendation at the end.`;
+
+  return prompt;
 }
 
-// Endpoint to handle chat messages
+// /api/chat endpoint
 app.post("/api/chat", async (req, res) => {
-  console.log("req.body", req.body); // Debug log for request body
-  const { userResponse } = req.body;
-  console.log("API Chat endpoint hit");
-  console.log("User response:", userResponse);
-
-  if (!userResponse) {
-    console.error("❌ User response is empty");
-    return res.status(400).json({
-      error: "User response is empty. Please provide a valid response.",
-    });
-  }
-
   try {
-    const model = await initializeGenerativeAI();
+    const { userResponse, chatHistory } = req.body;
+    const prompt = createPrompt(userResponse, chatHistory);
 
-    const initialChatHistory = [
-      {
-        role: "user",
-        parts: [
-          {
-            text: "I'm Tina. I help you to choose the right insurance policy. May I ask you a few personal questions to make sure I recommend the best policy for you?",
-          },
-        ],
-      },
+    const response = (await model.generateContent(prompt)).response;
+    console.log("AI response:", response.text());
+
+    const updatedChatHistory = [
+      ...(Array.isArray(chatHistory) ? chatHistory : []),
+      { role: "user", content: userResponse },
+      { role: "Tina", content: response.text() },
     ];
 
-    chatSession = model.startChat({
-      history: initialChatHistory,
-    });
-
-    console.log(chatSession.history);
-
-    if (!chatSession) {
-      return res.status(400).json({
-        error: "Chat session is not initialized. Please try again.",
-      });
-    }
-
-    const result = (await chatSession.sendMessage(userResponse)).response;
-    console.log("RESULT: ", result);
-    let aiResponse = result.text();
-    res.json({ aiResponse });
+    res.json({ aiResponse: response.text(), chatHistory: updatedChatHistory });
   } catch (error) {
     console.error("❌ Error generating AI response:", error);
-    res.status(500).json({
-      error: "Failed to generate response.",
-      details: error.message,
-    });
+    res.status(500).json({ error: "Failed to generate response." });
   }
 });
 
-// Root route for checking server status
+// Root route
 app.get("/", (req, res) => {
-  res.send("Connected my dudes 🔌");
+  res.send("Connected");
 });
 
-// 404 handler for unrecognized routes
+// 404 handler
 app.use((req, res) => {
   res.status(404).send("Endpoint not found");
 });
 
-// Start the server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+  console.log(`Server listening on port ${PORT}`);
 });

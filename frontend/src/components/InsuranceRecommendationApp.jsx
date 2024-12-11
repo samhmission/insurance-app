@@ -2,47 +2,16 @@ import { useState, useRef, useEffect } from "react";
 import styles from "./InsuranceRecommendationApp.module.css";
 
 function App() {
-  const initialChatHistory = [
+  const [userInput, setUserInput] = useState("");
+  const [chatHistory, setChatHistory] = useState([
     {
       role: "tina",
-      text: "I'm Tina. I help you to choose the right insurance policy. May I ask you a few personal questions to make sure I recommend the best policy for you?",
+      text: "I'm Tina. I help you to choose the right insurance policy. May I ask you a few personal questions?",
     },
-  ];
-
-  const [userInput, setUserInput] = useState("");
-  const [chatHistory, setChatHistory] = useState(initialChatHistory);
-
-  // create a ref hook to hold the chat history container element
+  ]);
+  const [loading, setLoading] = useState(false);
   const chatHistoryEndRef = useRef(null);
 
-  useEffect(() => {
-    // Call backend to initialize AI on page load
-    const initializeGenerativeAI = async () => {
-      try {
-        const response = await fetch("http://localhost:5000/api/chat", {
-          method: "POST",
-          mode: "cors",
-          body: JSON.stringify({}),
-          headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Content-Type": "application/json",
-          },
-        });
-
-        if (response.status === 200) {
-          console.log("AI initialized successfully");
-        } else {
-          console.error("Failed to initialize AI:", response.statusText);
-        }
-      } catch (error) {
-        console.error("Error calling backend:", error);
-      }
-    };
-
-    initializeGenerativeAI();
-  }, []);
-
-  // scroll to the bottom when chatHistory changes
   useEffect(() => {
     if (chatHistoryEndRef.current) {
       chatHistoryEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -51,33 +20,53 @@ function App() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("User input:", userInput); // Debug log for user input
+    setLoading(true);
+    console.log("User input:", userInput);
     try {
+      const formattedChatHistory = chatHistory.map((entry) => ({
+        role: entry.role === "user" ? "user" : "tina",
+        content: entry.text,
+      }));
+
       const response = await fetch("http://localhost:5000/api/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ userResponse: userInput }), // Ensure userResponse is sent in the body
+        body: JSON.stringify({
+          userResponse: userInput,
+          chatHistory: formattedChatHistory,
+        }),
       });
 
-      console.log("API response:", response); // Debug log for API response
+      console.log("API response:", response);
+
+      if (!response.ok) {
+        setChatHistory([
+          ...chatHistory,
+          { role: "tina", text: "Sorry, something went wrong!" },
+        ]);
+        setLoading(false);
+        return;
+      }
 
       const data = await response.json();
+      console.log("API response data:", data);
+
       setChatHistory([
         ...chatHistory,
         { role: "user", text: userInput },
         { role: "tina", text: data.aiResponse },
       ]);
-      console.log("Updated chat history:", chatHistory); // Debug log for chat history
-      setUserInput(""); // clear text field after sending
-
-      // ...existing code...
+      console.log("Updated chat history:", chatHistory);
+      setUserInput("");
     } catch (error) {
       console.error(
         "❌ Error sending response:",
         error.response ? error.response.data : error.message
       );
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -96,7 +85,6 @@ function App() {
             <span>{entry.text}</span>
           </div>
         ))}
-        {/* This div is used to scroll to the bottom of chat history */}
         <div ref={chatHistoryEndRef}></div>
       </div>
       <div className={styles.userInputContainer}>
@@ -107,8 +95,12 @@ function App() {
           className={styles.inputBox}
           placeholder="Type your message..."
         />
-        <button onClick={handleSubmit} className={styles.submitButton}>
-          Send
+        <button
+          onClick={handleSubmit}
+          className={styles.submitButton}
+          disabled={!userInput.trim() || loading}
+        >
+          {loading ? "Loading..." : "Send"}
         </button>
       </div>
     </div>
