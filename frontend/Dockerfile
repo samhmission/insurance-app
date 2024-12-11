@@ -12,7 +12,7 @@ ARG NODE_VERSION=22
 # Use node image for base image for all stages.
 FROM node:${NODE_VERSION}-alpine AS base
 
-# Set working directory for all build stages.
+# Set working directory for all build stages. in the docker image.
 WORKDIR /usr/src/app
 
 
@@ -63,6 +63,7 @@ COPY package.json .
 # the built application from the build stage into the image.
 COPY --from=deps /usr/src/app/node_modules ./node_modules
 COPY --from=build /usr/src/app/dist ./dist
+# dist is my bundled frontend code
 
 
 # Expose the port that the application listens on.
