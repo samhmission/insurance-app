@@ -164,6 +164,7 @@ Useful for development, where you want to share source code or configuration fil
 **Example**:
 
 ```docker run --mount type=bind,source=/path/to/host/dir,target=/app myimage```
+
 Note: Use absolute paths for source.
 
 **3. Tmpfs Mounts**: (type=tmpfs)
