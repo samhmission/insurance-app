@@ -137,6 +137,7 @@ Why Use ```--mount```?
 
 ### Basic Syntax
 The ```--mount``` option uses key-value pairs to define the type and configuration of the mount:
+
 ```docker run --mount type=<type>,source=<source>,target=<target>,[options] <image>```
 
 - **type**: Specifies the type of mount. It can be ```volume```, ```bind```, or ```tmpfs```.
@@ -145,19 +146,24 @@ The ```--mount``` option uses key-value pairs to define the type and configurati
 - **options**: Additional settings (optional), such as read-only or volume-specific options.
 
 ### Types of Mounts
+
 **1. Volume Mounts**: (type=volume)
 Managed by Docker.
 Stores data in Docker's storage backend.
 Ideal for persistent data across containers.
-Example:
-docker run --mount type=volume,source=myvolume,target=/data myimage
+
+**Example**:
+
+```docker run --mount type=volume,source=myvolume,target=/data myimage```
 
 **2. Bind Mounts**: (type=bind)
 Maps a specific file or directory on the host to the container.
 Directly accesses host files.
 Useful for development, where you want to share source code or configuration files.
-Example:
-docker run --mount type=bind,source=/path/to/host/dir,target=/app myimage
+
+**Example**:
+
+```docker run --mount type=bind,source=/path/to/host/dir,target=/app myimage```
 Note: Use absolute paths for source.
 
 **3. Tmpfs Mounts**: (type=tmpfs)
